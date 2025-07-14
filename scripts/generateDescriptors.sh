@@ -23,7 +23,6 @@ generate_descriptors/atomicDensities.py \
     --CUTOFF  1000 \
     --RES     200 \
     --Z_SIGMA 0.1 \
-    --VERBOSE 1
 
 echo "generate_descriptors/generateCoulomb.py"
 /home/da720397/.conda/envs/descriptor_env/bin/python \
@@ -35,10 +34,10 @@ generate_descriptors/generateCoulomb.py \
 echo "generate_descriptors/generateRCD.py"
 /home/da720397/.conda/envs/descriptor_env/bin/python \
 generate_descriptors/generateRCD.py \
-    --RHOS    data/densities.dat \
+    --RHOS    descriptors/densities.npy \
     --MOLS    data/all_xyz_blocks.xyz \
     --OUT     descriptors \
-    --n       16 \
+    -n        16 \
     --Z_SIGMA 0.1 \
     --RES     0 \
     --VERBOSE 1

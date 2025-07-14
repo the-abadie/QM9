@@ -95,9 +95,10 @@ def importQM7(structure_file:str):
 
 def coulomb_matrix(Z, R, n_max):
     n_mols = len(Z)
+    blank  = np.zeros((n_mols, n_mols))
 
     #Generate Descriptors, unique values of the Coulomb Matrix M
-    n_unique = int(0.5*n_max*(n_max-1))
+    n_unique = len(np.triu_indices_from(blank, k=0))
 
     coulomb = np.zeros((n_mols, n_unique))
 
@@ -114,7 +115,7 @@ def coulomb_matrix(Z, R, n_max):
                 else:
                     M[i][j] = (Z[k][i]*Z[k][j]) / lin.norm(R[k][i] - R[k][j])**2
 
-        unique_entries = M[np.triu_indices_from(M, k=1)]
+        unique_entries = M[np.triu_indices_from(M, k=0)]
 
         #Append 0s to match molecule with largest number of eigenvalues
         if n_atoms == n_max:

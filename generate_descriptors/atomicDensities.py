@@ -24,7 +24,7 @@ parser.add_argument("-o", "--OUT"    , type=str  , default="data",
 parser.add_argument("-c", "--CUTOFF" , type=int  , default=1000,
                     help="Cutoff for the number of data points.")
 
-parser.add_argument("-r", "--RES   " , type=int  , default=200,
+parser.add_argument("-r", "--RES"    , type=int  , default=200,
                     help="Resolution of final densities.")
 
 parser.add_argument("-z", "--Z_SIGMA", type=float, default=0.1,
@@ -35,7 +35,7 @@ args = parser.parse_args()
 input_path  = args.IN
 output_path = args.OUT
 N_cutoff    = args.CUTOFF
-resolution  = args.RESOLUTION
+resolution  = args.RES
 Z_sigma     = args.Z_SIGMA
 
 dR         :float      = 0.01  # Length, Angstrom
