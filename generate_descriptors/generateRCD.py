@@ -63,7 +63,7 @@ class Molecule:
 # FUNCTION DEFINITIONS
 #---------------------
 
-def getZ(label:str) -> int:
+def getZ(label) -> int:
     assert label != "", "Label must not be empty."
     
     elements="H   He\
@@ -254,7 +254,7 @@ RHOS_NUC = np.zeros(np.shape(RHOS_SYM))
 RHOS_VAL = np.zeros(np.shape(RHOS_SYM))
 
 for i in range(len(RHOS)):
-    RHOS_NUC[i] = (i+1) * (1.0/(Z_sigma*np.sqrt(2*np.pi))) * np.exp(-0.5*(np.arange(-N, N)*dR/Z_sigma)**2.0) - RHOS_SYM[i]*100
+    RHOS_NUC[i] = (i+1)           * (1.0/(Z_sigma*np.sqrt(2*np.pi))) * np.exp(-0.5*(np.arange(-N, N)*dR/Z_sigma)**2.0) - RHOS_SYM[i]*100
 
     RHOS_VAL[i] = getValence(i+1) * (1.0/(Z_sigma*np.sqrt(2*np.pi))) * np.exp(-0.5*(np.arange(-N, N)*dR/Z_sigma)**2.0) - RHOS_SYM[i]*100
 
@@ -274,7 +274,7 @@ descriptors = [None] * len(MOLS)
 for i, desc in results:
     descriptors[i] = desc
 
-np.save(file=f"{out_path}/RCD_{Z_sigma}.npy", arr = descriptors)
+np.save(file=f"{out_path}/mol_RCD_{Z_sigma}.npy", arr = descriptors)
 
 if verbose != 0:
     print(

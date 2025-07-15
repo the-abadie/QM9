@@ -8,7 +8,6 @@ import time
 import argparse
 import os
 from dataclasses import dataclass
-from joblib import Parallel, delayed
 
 #------------------
 # CLASS DEFINITIONS
@@ -43,7 +42,7 @@ verbose     = args.VERBOSE
 # FUNCTION DEFINITIONS
 #---------------------
 
-def getZ(label:str) -> int:    
+def getZ(label) -> int:
     elements="H   He\
         Li  Be  B   C   N   O   F   Ne\
         Na  Mg  Al  Si  P   S   Cl  Ar\
@@ -81,7 +80,7 @@ def importQM7(structure_file:str):
             xyzs = np.zeros((n_atoms, 3))
 
             #Go through every atom in the molecule:
-            atom_index = 0
+            atom_index:int = 0
             for j in range(line+2, line+2+n_atoms):
                 Zs  [atom_index] = getZ(structures[j].split()[0])
                 xyzs[atom_index] = np.array([float(val) for val in structures[j].split()[1:4]])
@@ -94,7 +93,7 @@ def importQM7(structure_file:str):
     return Z, R
 
 def coulomb_matrix(Z, R, n_max):
-    n_mols = len(Z)
+    n_mols:int = len(Z)
     blank  = np.zeros((n_mols, n_mols))
 
     #Generate Descriptors, unique values of the Coulomb Matrix M
@@ -117,7 +116,7 @@ def coulomb_matrix(Z, R, n_max):
 
         unique_entries = M[np.triu_indices_from(M, k=0)]
 
-        #Append 0s to match molecule with largest number of eigenvalues
+        # Append 0s to match molecule with largest number of eigenvalues
         if n_atoms == n_max:
             coulomb[k] = unique_entries
         else:
@@ -150,7 +149,7 @@ duration = time.time() - start_time
 # WRITE TO FILE
 #--------------
 
-np.save(file=f"{output_path}/CM.npy", arr = coulomb_descriptors)
+np.save(file=f"{output_path}/mol_CM.npy", arr = coulomb_descriptors)
 
 if verbose != 0:
     print(
