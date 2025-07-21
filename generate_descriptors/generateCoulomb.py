@@ -153,7 +153,7 @@ np.save(file=f"{output_path}/mol_CM.npy", arr = coulomb_descriptors)
 
 if verbose != 0:
     print(
-        " ===========================================================\n",
+        "===========================================================\n",
         "COULOMB MATRIX DESCRIPTORS COMPLETE\n",
        f"DESCRIPTORS WRITTEN TO {output_path}/CM.npy ({round(os.path.getsize(f"{output_path}/CM.npy")/10**9, 2)} GB).\n",
        f"{len(Z)} DESCRIPTORS COMPUTED IN {round(duration, 2)} SECONDS ({round(duration/60., 2)} MINUTES).\n",

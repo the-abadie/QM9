@@ -1,6 +1,6 @@
 # region Import Packages
 import numpy             as np
-import matplotlib        as mpl
+import pandas            as pd
 import matplotlib.pyplot as plt
 import scienceplots
 import datetime
@@ -13,8 +13,6 @@ from sklearn.model_selection import LeaveOneOut
 from sklearn.metrics         import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing   import StandardScaler
 from skopt                   import BayesSearchCV
-
-from matplotlib.ticker       import MaxNLocator
 # endregion
 
 #region Read Command-Line Arguments
@@ -44,15 +42,15 @@ parser.add_argument("-m", "--METRIC", type=str, default="MAE",
 parser.add_argument("--STRATA", type=int, default=10,
                     help="Degree of stratification for training. '0' or '1' to turn off.")
 
+parser.add_argument("-k", "--KFOLD", type=int, default=5,
+                    help="Number of cross-validation folds to use during training. \
+                         '999' for leave-one-out.")
+
 parser.add_argument("--NORMALIZE_DESC", type=int, default=1,
                     help="Normalize descriptors before training. '0' to turn off.")
 
 parser.add_argument("--NORMALIZE_TARGET", type=int, default=0,
                     help="Normalize targets before training. '0' to turn off.")
-
-parser.add_argument("-k", "--KFOLD", type=int, default=5,
-                    help="Number of cross-validation folds to use during training. \
-                         '999' for leave-one-out.")
 
 parser.add_argument("--SIGMA_MIN", type=int, default=0,
                     help="Exponent for smallest sigma value (2^).")
@@ -69,6 +67,9 @@ parser.add_argument("--LAMBDA_MAX", type=int, default=0,
 parser.add_argument("--N_ITER", type=int, default=50,
                     help="Numer of iterations to use in Bayesian CV Search.")
 
+parser.add_argument("--PLOT", type=int, default=1,
+                    help="Plot results, saved in path specified by --OUT. '0' to turn off.")
+
 parser.add_argument("-v", "--VERBOSE", type=int, default=1,
                     help="Turn on verbose output.")
 
@@ -82,17 +83,18 @@ TRAINING_FRACTION:float = args.NTRAIN
 KERNEL           :str   = args.KERNEL
 METRIC           :str   = args.METRIC
 N_STRATA         :int   = args.STRATA
+N_FOLDS          :int   = args.KFOLD
 NORMAL_DESC      :int   = args.NORMALIZE_DESC
 NORMAL_TARGET    :int   = args.NORMALIZE_TARGET
-N_FOLDS          :int   = args.KFOLD
 SIGMA_MIN        :int   = args.SIGMA_MIN
 SIGMA_MAX        :int   = args.SIGMA_MAX
 LAMBDA_MIN       :int   = args.LAMBDA_MIN
 LAMBDA_MAX       :int   = args.LAMBDA_MAX
 N_ITER           :int   = args.N_ITER
+PLOT             :int   = args.PLOT
 VERBOSITY        :int   = args.VERBOSE
-
 SEED             :int = int(datetime.datetime.now().timestamp())
+
 #endregion
 
 #region Function Definitions
@@ -164,7 +166,10 @@ assert 0. < TRAINING_FRACTION < 1., f"Training fraction ({TRAINING_FRACTION}) mu
 #endregion
 
 #region Pre-Processing
-N:int = len(TARGETS)
+N      :int = len(TARGETS)
+N_TRAIN:int = int(TRAINING_FRACTION * N)
+
+OUTPUT_PATH = f"{OUTPUT_PATH}/{N_TRAIN}_{SEED}"
 
 WORKING_DESCRIPTORS = DESCRIPTORS
 WORKING_TARGETS     = TARGETS
@@ -173,12 +178,12 @@ scaler = StandardScaler()
 if NORMAL_DESC:
     WORKING_DESCRIPTORS = scaler.fit_transform(DESCRIPTORS)
 if NORMAL_TARGET:
-    WORKING_TARGETS     = scaler.fit_transform(TARGETS)
+    WORKING_TARGETS     = scaler.fit_transform(TARGETS.reshape(-1, 1)).ravel()
 
 
 if KERNEL in ["rbf", "gaussian"]:
-    gamma_MIN = 1.0 / (2.0 * SIGMA_MIN ** 2.)
-    gamma_MAX = 1.0 / (2.0 * SIGMA_MAX ** 2.)
+    gamma_MIN = 1.0 / (2.0 * (2. ** SIGMA_MIN) ** 2.)
+    gamma_MAX = 1.0 / (2.0 * (2. ** SIGMA_MAX) ** 2.)
 elif KERNEL == "laplacian":
     gamma_MIN = 1.0 / SIGMA_MIN
     gamma_MAX = 1.0 / SIGMA_MAX
@@ -191,7 +196,6 @@ search_space = {
     "gamma": (gamma_MAX, gamma_MIN, "log-uniform"),
 }
 
-N_TRAIN = int(TRAINING_FRACTION * N)
 
 idx = np.arange(N)
 
@@ -250,7 +254,7 @@ model_start_time = time.time()
 
 KRR_MODEL.fit(TRAINING_DESCRIPTORS, TRAINING_TARGETS)
 
-model_end_time = time.time()
+model_duration = time.time() - model_start_time
 
 if NORMAL_TARGET:
     y_pred = KRR_MODEL.predict(TESTING_DESCRIPTORS)
@@ -276,9 +280,17 @@ best_lambda = KRR_MODEL.best_params_["alpha"]
 
 #endregion
 
-#region Save Data and Exit
+#region Save Results
 
-OUTPUT_PATH = f"{OUTPUT_PATH}_{N_TRAIN}_{SEED}"
+if VERBOSITY > 0:
+    print("--------MODEL EVALUATION COMPLETE--------")
+    print(f"Target: {TARGET_PATH}")
+    print(f"Relative MAE: {relative_MAE}%")
+    print(f"Model cross-validated and retrained in {round(model_duration, 2)} seconds ({round(model_duration/60., 2)} minutes).")
+    print(f"{round(model_duration/N_TRAIN, 2)} seconds/N_TRAIN.")
+    print(f"{round(model_duration/N_TRAIN/N_FOLDS, 2)} seconds/N_TRAIN/N_FOLDS.")
+    print(f"{round(model_duration/N_TRAIN/N_FOLDS/N_CORES, 2)} seconds/N_TRAIN/N_FOLDS/N_CORES.")
+    print("-----------------------------------------")
 
 try:
     np.save(file = f"{OUTPUT_PATH}/training_descriptors.npy",
@@ -336,5 +348,61 @@ try:
 except Exception as e:
     print("Saving model summary failed. Check to see if you have enough space, or if your output path exists.")
     print(e)
+
+#endregion
+
+#region Plot Results
+if PLOT == 0:
+    exit()
+
+plt.style.use(["nature", "science"])
+
+results_df = pd.DataFrame(KRR_MODEL.cv_results_)
+
+scores = results_df['mean_test_score']
+best_so_far = np.maximum.accumulate(scores)
+
+_, ax = plt.subplots()
+ax.plot(best_so_far, marker='o', label='Best so far')
+
+ax.set_xlabel('Iteration')
+ax.set_ylabel('Best Mean Test Score')
+ax.set_title('BayesSearchCV Convergence')
+ax.grid(True)
+
+plt.savefig(f"{OUTPUT_PATH}/convergence.png", bbox_inches="tight", dpi=150)
+
+fig, ax = plt.subplots()
+sc = ax.scatter(results_df['param_alpha'], results_df['param_gamma'],
+                c=results_df['mean_test_score'], cmap='jet', s=40)
+fig.colorbar(sc, ax=ax, label='Mean Test Score')
+
+ax.set_xlabel('alpha')
+ax.set_ylabel('gamma')
+ax.set_title('Search Space Performance')
+ax.set_xscale("log")
+ax.set_yscale("log")
+
+plt.savefig(f"{OUTPUT_PATH}/search.png", bbox_inches="tight", dpi=150)
+
+_, ax = plt.subplots()
+ax.scatter(TARGETS[test_idx], y_pred, s=1, color="goldenrod", zorder=10)
+ax.plot([0.8*min(TARGETS[test_idx]), 1.2*max(TARGETS[test_idx])],
+        [0.8*min(TARGETS[test_idx]), 1.2*max(TARGETS[test_idx])],
+        color="royalblue", linestyle="--")
+ax.set_xlabel("Groud Truth")
+ax.set_ylabel("Prediction")
+ax.set_title("Model Predictions on Test Set")
+
+plt.savefig(f"{OUTPUT_PATH}/yy.png", bbox_inches="tight", dpi=150)
+
+_, ax = plt.subplots()
+ax.hist(x=TARGETS[test_idx] - y_pred, bins=201, density=True, color="goldenrod")
+
+ax.set_xlabel("Residual")
+ax.set_ylabel("Density")
+ax.set_title("Test Set Residual Distribution")
+
+plt.savefig(f"{OUTPUT_PATH}/residual.png", bbox_inches="tight", dpi=150)
 
 #endregion
