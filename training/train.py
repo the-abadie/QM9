@@ -1,0 +1,340 @@
+# region Import Packages
+import numpy             as np
+import matplotlib        as mpl
+import matplotlib.pyplot as plt
+import scienceplots
+import datetime
+import time
+import os
+import argparse
+
+from sklearn.kernel_ridge    import KernelRidge
+from sklearn.model_selection import LeaveOneOut
+from sklearn.metrics         import mean_absolute_error, mean_squared_error
+from sklearn.preprocessing   import StandardScaler
+from skopt                   import BayesSearchCV
+
+from matplotlib.ticker       import MaxNLocator
+# endregion
+
+#region Read Command-Line Arguments
+parser = argparse.ArgumentParser()
+
+parser.add_argument("-D", "--DESC", type=str,
+                    help="Path to molecular descriptors (.npy).")
+
+parser.add_argument("-T", "--TARGET", type=str,
+                    help="Path to targets (.dat).")
+
+parser.add_argument("-o", "--OUT", type=str  , default="results",
+                    help="Path to save results.")
+
+parser.add_argument("-N", type=int, default=16,
+                    help="Number of cores for parellization.")
+
+parser.add_argument("-n", "--NTRAIN", type=float, default=0.15,
+                    help="Fraction of total data to use for training.")
+
+parser.add_argument("-K", "--KERNEL", type=str, default="rbf",
+                    help="Kernel to use for training. Options: 'rbf', 'laplacian'.")
+
+parser.add_argument("-m", "--METRIC", type=str, default="MAE",
+                    help="Metric to optimize during training. Options: 'MAE', 'RMSE'.")
+
+parser.add_argument("--STRATA", type=int, default=10,
+                    help="Degree of stratification for training. '0' or '1' to turn off.")
+
+parser.add_argument("--NORMALIZE_DESC", type=int, default=1,
+                    help="Normalize descriptors before training. '0' to turn off.")
+
+parser.add_argument("--NORMALIZE_TARGET", type=int, default=0,
+                    help="Normalize targets before training. '0' to turn off.")
+
+parser.add_argument("-k", "--KFOLD", type=int, default=5,
+                    help="Number of cross-validation folds to use during training. \
+                         '999' for leave-one-out.")
+
+parser.add_argument("--SIGMA_MIN", type=int, default=0,
+                    help="Exponent for smallest sigma value (2^).")
+
+parser.add_argument("--SIGMA_MAX", type=int, default=16,
+                    help="Exponent for largest sigma value (2^).")
+
+parser.add_argument("--LAMBDA_MIN", type=int, default=-12,
+                    help="Exponent for smallest lambda value (10^).")
+
+parser.add_argument("--LAMBDA_MAX", type=int, default=0,
+                    help="Exponent for largest lambda value (10^).")
+
+parser.add_argument("--N_ITER", type=int, default=50,
+                    help="Numer of iterations to use in Bayesian CV Search.")
+
+parser.add_argument("-v", "--VERBOSE", type=int, default=1,
+                    help="Turn on verbose output.")
+
+args = parser.parse_args()
+
+DESC_PATH        :str   = args.DESC
+TARGET_PATH      :str   = args.TARGET
+OUTPUT_PATH      :str   = args.OUT
+N_CORES          :int   = args.N
+TRAINING_FRACTION:float = args.NTRAIN
+KERNEL           :str   = args.KERNEL
+METRIC           :str   = args.METRIC
+N_STRATA         :int   = args.STRATA
+NORMAL_DESC      :int   = args.NORMALIZE_DESC
+NORMAL_TARGET    :int   = args.NORMALIZE_TARGET
+N_FOLDS          :int   = args.KFOLD
+SIGMA_MIN        :int   = args.SIGMA_MIN
+SIGMA_MAX        :int   = args.SIGMA_MAX
+LAMBDA_MIN       :int   = args.LAMBDA_MIN
+LAMBDA_MAX       :int   = args.LAMBDA_MAX
+N_ITER           :int   = args.N_ITER
+VERBOSITY        :int   = args.VERBOSE
+
+SEED             :int = int(datetime.datetime.now().timestamp())
+#endregion
+
+#region Function Definitions
+def stratified_selection(values, n_strata: int, n_total: int):
+    values = np.array(values)
+    sort = np.argsort(values)
+
+    return_idx = []
+
+    per_Strata: int = n_total // n_strata
+    remainder : int = n_total % n_strata
+
+    strata = np.array_split(sort, n_strata)
+
+    strata_shuffle = [np.random.permutation(stratum) for stratum in strata]
+
+    for i in range(n_strata):
+        return_idx.append(
+            strata_shuffle[i][:per_Strata]
+        )
+
+    if len(return_idx) < n_total:
+        for i in range(remainder):
+            return_idx.append(strata_shuffle[i][per_Strata])
+
+    return_idx = np.concatenate(return_idx)
+
+    assert len(return_idx) == n_total, f"{len(return_idx)} != {n_total}"
+
+    return return_idx
+#endregion
+
+#region Import Data
+root, extension = os.path.splitext(DESC_PATH)
+if extension != ".npy":
+    print("Descriptor path is not .npy. Exiting.")
+    exit()
+
+try:
+    DESCRIPTORS = np.load(DESC_PATH)
+except Exception as e:
+    print(f"Loading descriptor failed. Does {DESC_PATH} exist?")
+    print(e)
+    exit()
+
+root, extension = os.path.splitext(TARGET_PATH)
+if extension != ".npy":
+    try:
+        TARGETS = np.loadtxt(TARGET_PATH)
+    except Exception as e:
+        print(f"Loading target failed. Does {TARGET_PATH} exist?")
+        print(e)
+        exit()
+else:
+    try:
+        TARGETS = np.load(TARGET_PATH)
+    except Exception as e:
+        print(f"Loading target failed. Does {TARGET_PATH} exist?")
+        print(e)
+        exit()
+
+assert len(DESCRIPTORS) == len(TARGETS), \
+    f"Length of descriptor ({len(DESCRIPTORS)}) does not match length of target ({len(TARGETS)})."
+assert KERNEL in ["rbf", "gaussian", "laplacian"], \
+    f"Kernel must be 'rbf', 'gaussian', or 'laplacian'."
+assert METRIC in ["MAE", "RMSE"], \
+    f"Metric must be 'MAE' or 'RMSE'."
+assert 0. < TRAINING_FRACTION < 1., f"Training fraction ({TRAINING_FRACTION}) must be in range [0, 1]."
+#endregion
+
+#region Pre-Processing
+N:int = len(TARGETS)
+
+WORKING_DESCRIPTORS = DESCRIPTORS
+WORKING_TARGETS     = TARGETS
+
+scaler = StandardScaler()
+if NORMAL_DESC:
+    WORKING_DESCRIPTORS = scaler.fit_transform(DESCRIPTORS)
+if NORMAL_TARGET:
+    WORKING_TARGETS     = scaler.fit_transform(TARGETS)
+
+
+if KERNEL in ["rbf", "gaussian"]:
+    gamma_MIN = 1.0 / (2.0 * SIGMA_MIN ** 2.)
+    gamma_MAX = 1.0 / (2.0 * SIGMA_MAX ** 2.)
+elif KERNEL == "laplacian":
+    gamma_MIN = 1.0 / SIGMA_MIN
+    gamma_MAX = 1.0 / SIGMA_MAX
+else:
+    gamma_MAX = 1.0 / SIGMA_MAX
+    gamma_MIN = 1.0 / SIGMA_MIN
+
+search_space = {
+    "alpha": (10 ** (-LAMBDA_MIN), 10 ** LAMBDA_MAX, "log-uniform"),
+    "gamma": (gamma_MAX, gamma_MIN, "log-uniform"),
+}
+
+N_TRAIN = int(TRAINING_FRACTION * N)
+
+idx = np.arange(N)
+
+if N_STRATA > 1:
+    local_train_idx = stratified_selection(values = TARGETS, n_strata = N_STRATA, n_total = N_TRAIN)
+    train_idx       = idx[local_train_idx]
+else:
+    train_idx = np.random.choice(a = idx, size = N_TRAIN, replace = False)
+
+test_idx  = np.setdiff1d(idx, train_idx)
+
+assert len(train_idx)                 == N_TRAIN
+assert len(train_idx) + len(test_idx) == N, f"{len(train_idx) + len(test_idx)} != {N}"
+
+TRAINING_DESCRIPTORS = WORKING_DESCRIPTORS [train_idx]
+TRAINING_TARGETS     = WORKING_TARGETS     [train_idx]
+
+TESTING_DESCRIPTORS  = WORKING_DESCRIPTORS [test_idx]
+TESTING_TARGETS      = WORKING_TARGETS     [test_idx]
+
+if   KERNEL in ["rbf", "gaussian"]:
+    kernel = KernelRidge(kernel="rbf")
+elif KERNEL == "laplacian":
+    kernel = KernelRidge(kernel="laplacian")
+else:
+    kernel = KernelRidge(kernel="rbf")
+
+if   METRIC == "MAE":
+    score = "neg_mean_absolute_error"
+elif METRIC == "RMSE":
+    score = "neg_root_mean_squared_error"
+else:
+    score = "neg_mean_absolute_error"
+
+cross_validation = LeaveOneOut() if N_FOLDS == 999 else N_FOLDS
+try:
+    KRR_MODEL = BayesSearchCV(
+        estimator     = kernel,
+        search_spaces = search_space,
+        n_iter        = N_ITER,
+        cv            = cross_validation,
+        scoring       = score,
+        random_state  = SEED,
+        n_jobs        = N_CORES,
+        refit         = True,
+        verbose       = 0
+    )
+except Exception as e:
+    print("Something went wrong when initializing the cross-validation model. Please check all parameters to make sure they are correct.")
+    print(e)
+    exit()
+#endregion
+
+#region Train/Evaluate Model
+model_start_time = time.time()
+
+KRR_MODEL.fit(TRAINING_DESCRIPTORS, TRAINING_TARGETS)
+
+model_end_time = time.time()
+
+if NORMAL_TARGET:
+    y_pred = KRR_MODEL.predict(TESTING_DESCRIPTORS)
+    y_pred = scaler.inverse_transform(y_pred.reshape(-1, 1)).ravel()
+else:
+    y_pred = KRR_MODEL.predict(TESTING_DESCRIPTORS)
+
+prediction_MAE :float =         mean_absolute_error(TARGETS[test_idx], y_pred)
+prediction_RMSE:float = np.sqrt(mean_squared_error (TARGETS[test_idx], y_pred))
+
+TESTING_TARGETS_MAE :float = np.mean(np.abs (TARGETS[test_idx])    , dtype=float)
+TESTING_TARGETS_RMSE:float = np.sqrt(np.mean(TARGETS[test_idx]**2.), dtype=float)
+
+relative_MAE  = 100. * prediction_MAE  / TESTING_TARGETS_MAE
+relative_RMSE = 100. * prediction_RMSE / TESTING_TARGETS_RMSE
+
+if KERNEL in ["rbf", "gaussian"]:
+    best_sigma = 1. / np.sqrt(2. * KRR_MODEL.best_params_["gamma"])
+else:
+    best_sigma = KRR_MODEL.best_params_["gamma"] ** -1.
+
+best_lambda = KRR_MODEL.best_params_["alpha"]
+
+#endregion
+
+#region Save Data and Exit
+
+OUTPUT_PATH = f"{OUTPUT_PATH}_{N_TRAIN}_{SEED}"
+
+try:
+    np.save(file = f"{OUTPUT_PATH}/training_descriptors.npy",
+            arr  = TRAINING_DESCRIPTORS)
+    np.save(file = f"{OUTPUT_PATH}/training_targets.npy",
+            arr  = TRAINING_TARGETS)
+except Exception as e:
+    print("Saving training data failed. Check to see if you have enough space, or if your output path exists.")
+    print(e)
+
+try:
+    np.save(file = f"{OUTPUT_PATH}/testing_descriptors.npy",
+            arr  = TESTING_DESCRIPTORS)
+    np.save(file = f"{OUTPUT_PATH}/testing_targets.npy",
+            arr  = TESTING_TARGETS)
+except Exception as e:
+    print("Saving testing data failed. Check to see if you have enough space, or if your output path exists.")
+    print(e)
+
+try:
+    np.save(file = f"{OUTPUT_PATH}/model_weights.npy",
+            arr  = KRR_MODEL.best_estimator_.dual_coef_)
+
+    np.savetxt(fname = f"{OUTPUT_PATH}/lambda.txt",
+               X     = best_lambda)
+
+    np.savetxt(fname = f"{OUTPUT_PATH}/sigma.txt",
+               X     = best_sigma)
+except Exception as e:
+    print("Saving model parameters failed. Check to see if you have enough space, or if your output path exists.")
+    print(e)
+
+try:
+    with open(f"{OUTPUT_PATH}/summary.txt", "w") as f:
+        f.write("--------MODEL SUMMARY--------")
+        f.write(f"Training Fraction: {TRAINING_FRACTION} ({N_TRAIN})\n\n")
+
+        f.write(f"MAE : {prediction_MAE :.3f} ({relative_MAE :.2f}%)\n")
+        f.write(f"RMSE: {prediction_RMSE:.3f} ({relative_RMSE:.2f}%)\n\n")
+
+        f.write(f"Optimal Sigma : {best_sigma :.3f}\n")
+        f.write(f"Optimal Lambda: {best_lambda:.3f}\n\n")
+
+        f.write(f"Normalized Desciptors? : {NORMAL_DESC}\n")
+        f.write(f"Normalized Targets?    : {NORMAL_TARGET}\n")
+
+        f.write(f"Metric    : {METRIC}\n")
+        f.write(f"Kernel    : {KERNEL}\n")
+        f.write(f"Strata    : {N_STRATA}\n")
+        f.write(f"KFolds    : {N_FOLDS}\n")
+        f.write(f"Iterations: {N_ITER}\n\n")
+
+        f.write(f"Sigma Range : 2^{SIGMA_MIN} -> 2^{SIGMA_MAX}\n")
+        f.write(f"Lambda Range: 10^{LAMBDA_MIN} -> 10^{LAMBDA_MAX}\n")
+except Exception as e:
+    print("Saving model summary failed. Check to see if you have enough space, or if your output path exists.")
+    print(e)
+
+#endregion
