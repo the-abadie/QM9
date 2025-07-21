@@ -1,0 +1,17 @@
+data/properties/A.dat
+data/properties/B.dat
+data/properties/C.dat
+data/properties/Cv.dat
+data/properties/G.dat
+data/properties/H.dat
+data/properties/U.dat
+data/properties/U0.dat
+data/properties/alpha.dat
+data/properties/gap.dat
+data/properties/homo.dat
+data/properties/index.dat
+data/properties/lumo.dat
+data/properties/mu.dat
+data/properties/r2.dat
+data/properties/tag.dat
+data/properties/zpve.dat
