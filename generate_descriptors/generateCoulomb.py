@@ -1,27 +1,20 @@
-#----------------
-# PACKAGE IMPORTS
-#----------------
-
+#region Import Packages
 import numpy             as np
 import numpy.linalg      as lin
 import time
 import argparse
 import os
 from dataclasses import dataclass
+#endregion
 
-#------------------
-# CLASS DEFINITIONS
-#------------------
-
+#region Class Definitions
 @dataclass(frozen=True)
 class Molecule:
     atom_ids : np.ndarray
     positions: np.ndarray
+#endregion
 
-#----------------------------
-# READ COMMAND-LINE ARGUMENTS
-#----------------------------
-
+#region Read Command-Line Arguments
 parser = argparse.ArgumentParser()
 
 parser.add_argument("-i", "--IN"     , type=str  , default="data/all_xyz_blocks.xyz",
@@ -35,13 +28,11 @@ parser.add_argument("-v", "--VERBOSE", type=int  , default=1,
 args = parser.parse_args()
 
 input_path  = args.IN
-output_path = args.OUT
+out_path = args.OUT
 verbose     = args.VERBOSE
+#endregion
 
-#---------------------
-# FUNCTION DEFINITIONS
-#---------------------
-
+#region Function Definitions
 def getZ(label) -> int:
     elements="H   He\
         Li  Be  B   C   N   O   F   Ne\
@@ -123,11 +114,9 @@ def coulomb_matrix(Z, R, n_max):
             coulomb[k] = np.concatenate((unique_entries, [0]*(n_unique_max-len(unique_entries))))
 
     return coulomb
+#endregion
 
-#--------------
-# PROGRAM START
-#--------------
-
+#region Program Start
 Z, R = importQM7(structure_file = input_path)
 
 start_time = time.time()
@@ -137,19 +126,19 @@ coulomb_descriptors = coulomb_matrix(Z     = Z,
                                      n_max = len(max(Z, key=len)))
 
 duration = time.time() - start_time 
+#endregion
 
-#--------------
-# WRITE TO FILE
-#--------------
-
-np.save(file=f"{output_path}/CM.npy", arr = coulomb_descriptors)
+#region Save Results
+full_path:str = f"{out_path}/CM.npy"
+np.save(file=full_path, arr = coulomb_descriptors)
 
 if verbose != 0:
     print(
         "===========================================================\n",
         "COULOMB MATRIX DESCRIPTORS COMPLETE\n",
-       f"DESCRIPTORS WRITTEN TO {output_path}/CM.npy ({round(os.path.getsize(f"{output_path}/CM.npy")/10**9, 2)} GB).\n",
+       f"DESCRIPTORS WRITTEN TO {full_path} ({round(os.path.getsize(full_path)/10**9, 2)} GB).\n",
        f"{len(Z)} DESCRIPTORS COMPUTED IN {round(duration, 2)} SECONDS ({round(duration/60., 2)} MINUTES).\n",
        f"{round(len(Z)/duration, 2)} DESCRIPTORS/SECOND ({round(3600*len(Z)/duration, 2)} DESCRIPTORS/HOUR)\n",
         "===========================================================\n"
     )
+#endregion

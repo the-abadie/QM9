@@ -1,7 +1,4 @@
-#----------------
-# PACKAGE IMPORTS
-#----------------
-
+#region Import Packages
 import numpy as np
 import time
 import argparse
@@ -10,11 +7,16 @@ import os
 from dataclasses import dataclass
 from scipy       import interpolate
 from joblib      import Parallel, delayed
+#endregion
 
-#----------------------------
-# READ COMMAND-LINE ARGUMENTS
-#----------------------------
+#region Class Definitions
+@dataclass(frozen=True)
+class Molecule:
+    atom_ids : np.ndarray
+    positions: np.ndarray
+#endregion
 
+#region Read Command-Line Arguments
 parser = argparse.ArgumentParser()
 
 parser.add_argument("-r", "--RHOS"   , type=str  , default="data/densities.dat",
@@ -47,20 +49,9 @@ n_cores    = args.n
 verbose    = args.VERBOSE
 Z_sigma    = args.Z_SIGMA
 resolution = args.RES
+#endregion
 
-#------------------
-# CLASS DEFINITIONS
-#------------------
-
-@dataclass(frozen=True)
-class Molecule:
-    atom_ids : np.ndarray
-    positions: np.ndarray
-
-#---------------------
-# FUNCTION DEFINITIONS
-#---------------------
-
+#region Function Definitions
 def getZ(label) -> int:
     assert label != "", "Label must not be empty."
     
@@ -231,11 +222,9 @@ def normalizeDescriptors(desc: np.ndarray) -> np.ndarray:
 def compute_descriptor(i, mol, distribution):
     desc = generateDescriptor(mol, distribution, derivatives=True, resolution=0)
     return i, desc
+#endregion
 
-#---------------
-# PRE-PROCESSING
-#---------------
-
+#region Pre-Processing
 RHOS = np.load(rho_path)
 MOLS = getMols(mol_path)
 
@@ -255,11 +244,9 @@ for i in range(len(RHOS)):
     RHOS_NUC[i] = (i+1)           * (1.0/(Z_sigma*np.sqrt(2*np.pi))) * np.exp(-0.5*(np.arange(-N, N)*dR/Z_sigma)**2.0) - RHOS_SYM[i]*100
 
     RHOS_VAL[i] = getValence(i+1) * (1.0/(Z_sigma*np.sqrt(2*np.pi))) * np.exp(-0.5*(np.arange(-N, N)*dR/Z_sigma)**2.0) - RHOS_SYM[i]*100
+#endregion
 
-#--------------
-# PROGRAM START
-#--------------
-
+#region Program Start
 start_time = time.time()
 
 results = Parallel(n_jobs=n_cores, prefer="processes")(
@@ -271,16 +258,21 @@ duration = time.time() - start_time
 descriptors = [None] * len(MOLS)
 for i, desc in results:
     descriptors[i] = desc
+#endregion
 
-np.save(file=f"{out_path}/mol_RCD_{Z_sigma}.npy", arr = descriptors)
+#region Save Data
+full_path:str = f"{out_path}/RCD_{Z_sigma}.npy"
 
-if verbose != 0:
+np.save(file=full_path, arr = descriptors)
+
+if verbose > 0:
     print(
         " ===========================================================\n",
         "RCD DESCRIPTORS COMPLETE\n",
-       f"DESCRIPTORS WRITTEN TO {out_path}/RCD_{Z_sigma}.npy ({round(os.path.getsize(f"{out_path}/RCD_{Z_sigma}.npy")/10**9, 2)} GB).\n",
+       f"DESCRIPTORS WRITTEN TO {full_path} ({round(os.path.getsize(full_path)/10**9, 2)} GB).\n",
        f"{len(MOLS)} DESCRIPTORS COMPUTED IN {round(duration, 2)} SECONDS ({round(duration/60., 2)} MINUTES).\n",
        f"{round(len(MOLS)/duration, 2)} DESCRIPTORS/SECOND ({round(3600*len(MOLS)/duration, 2)} DESCRIPTORS/HOUR)\n",
        f"{round(len(MOLS)/duration/n_cores, 2)} DESCRIPTORS/SECOND/CORE ({round(3600*len(MOLS)/duration/n_cores, 2)} DESCRIPTORS/HOUR/CORE)\n",
         "===========================================================\n"
     )
+#endregion
