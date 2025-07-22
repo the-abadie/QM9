@@ -3,7 +3,6 @@
 #----------------
 
 import numpy as np
-import matplotlib.pyplot as plt
 import time
 import argparse
 import os 
@@ -11,7 +10,6 @@ import os
 from dataclasses import dataclass
 from scipy       import interpolate
 from joblib      import Parallel, delayed
-from copy        import deepcopy
 
 #----------------------------
 # READ COMMAND-LINE ARGUMENTS
@@ -20,7 +18,7 @@ from copy        import deepcopy
 parser = argparse.ArgumentParser()
 
 parser.add_argument("-r", "--RHOS"   , type=str  , default="data/densities.dat",
-                    help="Path to atomic density files.")
+                    help="Path to atomic density files (.npy).")
 
 parser.add_argument("-m", "--MOLS"   , type=str  , default="data/all_xyz_blocks.xyz",
                     help="Path to .xyz file containing all molecules.")
@@ -238,8 +236,8 @@ def compute_descriptor(i, mol, distribution):
 # PRE-PROCESSING
 #---------------
 
-RHOS = np.loadtxt(rho_path)
-MOLS =    getMols(mol_path)
+RHOS = np.load(rho_path)
+MOLS = getMols(mol_path)
 
 N     :int   = np.shape(RHOS)[1]  
 dR    :float = 0.01              

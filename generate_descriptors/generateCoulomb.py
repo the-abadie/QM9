@@ -97,9 +97,9 @@ def coulomb_matrix(Z, R, n_max):
     blank  = np.zeros((n_mols, n_mols))
 
     #Generate Descriptors, unique values of the Coulomb Matrix M
-    n_unique = len(np.triu_indices_from(blank, k=0))
+    n_unique_max = int(n_max*(n_max+1)/2)
 
-    coulomb = np.zeros((n_mols, n_unique))
+    coulomb = np.zeros((n_mols, n_unique_max))
 
     for k in range(n_mols):
 
@@ -120,16 +120,9 @@ def coulomb_matrix(Z, R, n_max):
         if n_atoms == n_max:
             coulomb[k] = unique_entries
         else:
-            coulomb[k] = np.concatenate((unique_entries, [0]*(n_unique-len(unique_entries))))
+            coulomb[k] = np.concatenate((unique_entries, [0]*(n_unique_max-len(unique_entries))))
 
     return coulomb
-
-def normalizeDescriptors(desc: np.ndarray) -> np.ndarray:
-    mean = np.mean(desc, axis=0)
-    std  = np.std (desc, axis=0)
-
-    std[std == 0] = 1
-    return (desc - mean) / std
 
 #--------------
 # PROGRAM START
@@ -149,7 +142,7 @@ duration = time.time() - start_time
 # WRITE TO FILE
 #--------------
 
-np.save(file=f"{output_path}/mol_CM.npy", arr = coulomb_descriptors)
+np.save(file=f"{output_path}/CM.npy", arr = coulomb_descriptors)
 
 if verbose != 0:
     print(
