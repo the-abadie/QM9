@@ -18,33 +18,38 @@ from skopt                   import BayesSearchCV
 # endregion
 
 #region Function Definitions
-def stratified_selection(values, n_strata: int, n_total: int):
-    values = np.array(values)
-    sort = np.argsort(values)
+def stratified_selection(values, n_strata: int, n_total: int, seed=None):
+    if seed is not None:
+        rng = np.random.default_rng(seed)
+    else:
+        rng = np.random.default_rng()
 
-    return_idx = []
+    values = np.asarray(values)
+    n_samples = len(values)
 
-    per_Strata: int = n_total // n_strata
-    remainder : int = n_total % n_strata
+    if n_total > n_samples:
+        raise ValueError(f"n_total ({n_total}) cannot be greater than number of samples ({n_samples})")
+    if n_strata > n_total:
+        n_strata = n_total  # Limit number of strata if too many
 
-    strata = np.array_split(sort, n_strata)
+    # Sort and split values into strata
+    sorted_indices = np.argsort(values)
+    strata = np.array_split(sorted_indices, n_strata)
 
-    strata_shuffle = [np.random.permutation(stratum) for stratum in strata]
+    # Compute how many from each stratum
+    per_stratum = n_total // n_strata
+    remainder = n_total % n_strata
 
-    for i in range(n_strata):
-        return_idx.append(
-            strata_shuffle[i][:per_Strata]
-        )
+    selected_indices = []
 
-    if len(return_idx) < n_strata:
-        for i in range(remainder):
-            return_idx.append(np.array([strata_shuffle[i][per_Strata]]))
+    for i, stratum in enumerate(strata):
+        n_select = per_stratum + (1 if i < remainder else 0)
+        if n_select > len(stratum):
+            raise ValueError(f"Stratum {i} too small to select {n_select} elements.")
+        selected_indices.extend(rng.choice(stratum, size=n_select, replace=False))
 
-    return_idx = np.concatenate(return_idx)
+    return np.array(selected_indices)
 
-    assert len(return_idx) == n_total, f"{len(return_idx)} != {n_total}"
-
-    return return_idx
 #endregion
 
 def main():
@@ -58,7 +63,7 @@ def main():
     parser.add_argument("-T", "--TARGET", type=str,
                         help="Path to targets (.dat).")
 
-    parser.add_argument("-O", "--OUTLIER", type=int,
+    parser.add_argument("-O", "--OUTLIER", type=int, default=1,
                         help="Remove data points that are over 10x the median value of all targets.")
 
     parser.add_argument("-o", "--OUT", type=str  , default="results",
@@ -220,8 +225,8 @@ def main():
         TARGETS     = TARGETS    [mask]
 
         if VERBOSITY > 1:
-            print(f"{N_tot - N_kept} ({round(100*(N_tot - N_kept)/N_tot),3}%) \
-                    points removed for being greater than 10x the median target value.")
+            print(f"{N_tot - N_kept} ({round(100*(N_tot - N_kept)/N_tot, 3)}%) " + \
+                   "points removed for being greater than 10x the median target value.")
 
     N      :int = len(TARGETS)
     N_TRAIN:int = int(TRAINING_FRACTION * N)
@@ -381,10 +386,10 @@ def main():
                 arr  = KRR_MODEL.best_estimator_.dual_coef_)
 
         np.savetxt(fname = f"{OUTPUT_PATH}/lambda.txt",
-                   X     = np.array(best_lambda))
+                   X     = np.asarray(best_lambda))
 
         np.savetxt(fname = f"{OUTPUT_PATH}/sigma.txt",
-                   X     = np.array(best_sigma))
+                   X     = np.asarray(best_sigma))
     except Exception as e:
         print("Saving model parameters failed. Check to see if you have enough space, or if your output path exists.")
         print(e)
