@@ -8,6 +8,7 @@ import datetime
 import time
 import os
 import argparse
+import sys
 
 from sklearn.kernel_ridge    import KernelRidge
 from sklearn.model_selection import LeaveOneOut
@@ -56,6 +57,9 @@ def main():
 
     parser.add_argument("-T", "--TARGET", type=str,
                         help="Path to targets (.dat).")
+
+    parser.add_argument("-O", "--OUTLIER", type=int,
+                        help="Remove data points that are over 10x the median value of all targets.")
 
     parser.add_argument("-o", "--OUT", type=str  , default="results",
                         help="Path to save results.")
@@ -114,6 +118,7 @@ def main():
     DESC_PATH        :str   = args.DESC
     TARGET_PATH      :str   = args.TARGET
     OUTPUT_PATH      :str   = args.OUT
+    OUTLIER          :int   = args.OUTLIER
     N_CORES          :int   = args.N
     TRAINING_FRACTION:float = args.TRAINFRAC
     KERNEL           :str   = args.KERNEL
@@ -137,6 +142,7 @@ def main():
     #region Import Data
     if VERBOSITY > 1:
         print("Region: Import Data")
+        print("Region: Import Data", file=sys.stderr)
 
     root, extension = os.path.splitext(DESC_PATH)
     if extension != ".npy":
@@ -185,6 +191,11 @@ def main():
             print(f"Loading target failed. Does {TARGET_PATH} exist?")
             print(e)
             exit()
+    #endregion
+
+    #region Pre-Processing
+    if VERBOSITY > 1:
+        print("Region: Pre-Processing")
 
     assert len(DESCRIPTORS) == len(TARGETS), \
         f"Length of descriptor ({len(DESCRIPTORS)}) does not match length of target ({len(TARGETS)})."
@@ -193,11 +204,24 @@ def main():
     assert METRIC in ["MAE", "RMSE"], \
         f"Metric must be 'MAE' or 'RMSE'."
     assert 0. < TRAINING_FRACTION < 1., f"Training fraction ({TRAINING_FRACTION}) must be in range [0, 1]."
-    #endregion
 
-    #region Pre-Processing
-    if VERBOSITY > 1:
-        print("Region: Pre-Processing")
+    if OUTLIER > 0:
+        if VERBOSITY > 1:
+            print("Outlier removal activated.")
+
+        TARGET_MEDIAN = np.median(np.abs(TARGETS))
+
+        mask = np.abs(TARGETS) <= 10 * TARGET_MEDIAN
+
+        N_tot :int = len(TARGETS)
+        N_kept:int = np.sum(mask)
+
+        DESCRIPTORS = DESCRIPTORS[mask]
+        TARGETS     = TARGETS    [mask]
+
+        if VERBOSITY > 1:
+            print(f"{N_tot - N_kept} ({round(100*(N_tot - N_kept)/N_tot),3}%) \
+                    points removed for being greater than 10x the median target value.")
 
     N      :int = len(TARGETS)
     N_TRAIN:int = int(TRAINING_FRACTION * N)
@@ -286,6 +310,8 @@ def main():
     #region Train/Evaluate Model
     if VERBOSITY > 1:
         print("Region: Train/Evaluate Model")
+        print("Region: Train/Evaluate Model", file=sys.stderr)
+
     model_start_time = time.time()
 
     KRR_MODEL.fit(TRAINING_DESCRIPTORS, TRAINING_TARGETS)
@@ -319,6 +345,8 @@ def main():
     #region Save Results
     if VERBOSITY > 1:
         print("Region: Save Results")
+        print("Region: Save Results", file=sys.stderr)
+
 
     if VERBOSITY > 0:
         print("--------MODEL EVALUATION COMPLETE--------")
@@ -353,18 +381,18 @@ def main():
                 arr  = KRR_MODEL.best_estimator_.dual_coef_)
 
         np.savetxt(fname = f"{OUTPUT_PATH}/lambda.txt",
-                   X     = best_lambda)
+                   X     = np.array(best_lambda))
 
         np.savetxt(fname = f"{OUTPUT_PATH}/sigma.txt",
-                   X     = best_sigma)
+                   X     = np.array(best_sigma))
     except Exception as e:
         print("Saving model parameters failed. Check to see if you have enough space, or if your output path exists.")
         print(e)
 
     try:
         with open(f"{OUTPUT_PATH}/summary.txt", "w") as f:
-            f.write("--------MODEL SUMMARY--------")
-            f.write(f"Training Fraction: {TRAINING_FRACTION} ({N_TRAIN})\n\n")
+            f.write("--------MODEL SUMMARY--------\n")
+            f.write(f"Training Fraction: {TRAINING_FRACTION} (N = {N_TRAIN})\n\n")
 
             f.write(f"MAE : {prediction_MAE :.3f} ({relative_MAE :.2f}%)\n")
             f.write(f"RMSE: {prediction_RMSE:.3f} ({relative_RMSE:.2f}%)\n\n")
@@ -373,7 +401,7 @@ def main():
             f.write(f"Optimal Lambda: {best_lambda:.3f}\n\n")
 
             f.write(f"Normalized Desciptors? : {NORMAL_DESC}\n")
-            f.write(f"Normalized Targets?    : {NORMAL_TARGET}\n")
+            f.write(f"Normalized Targets?    : {NORMAL_TARGET}\n\n")
 
             f.write(f"Metric    : {METRIC}\n")
             f.write(f"Kernel    : {KERNEL}\n")
@@ -395,6 +423,8 @@ def main():
 
     if VERBOSITY > 1:
         print("Region: Plot Results")
+        print("Region: Plot Results", file=sys.stderr)
+
 
     plt.style.use(["nature", "science"])
 

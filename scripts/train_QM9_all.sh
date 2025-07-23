@@ -23,9 +23,10 @@ set -euo pipefail
 
 echo "Running target: $FILENAME"
 /home/da720397/.conda/envs/descriptor_env/bin/python training/train.py \
-  --DESC             descriptors/rcp_qm9.npy \
+  --DESC             descriptors/RCD_0.1.npy \
   --TARGET           "$FILE"                 \
   --OUT              "results/${FILENAME}"   \
+  --OUTLIER          1                       \
   -N                 16                      \
   --TRAINFRAC        "0.25"                  \
   --KERNEL           rbf                     \
