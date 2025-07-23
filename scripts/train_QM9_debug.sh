@@ -24,7 +24,7 @@ echo "Running target: $FILENAME"
   --DESC             descriptors/rcp_qm9.npy \
   --TARGET           "$FILE"                 \
   --OUT              "results/${FILENAME}"   \
-  --N                16                      \
+  -N                 16                      \
   --TRAINFRAC        "0.25"                  \
   --KERNEL           rbf                     \
   --METRIC           MAE                     \

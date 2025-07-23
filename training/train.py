@@ -3,7 +3,7 @@ import numpy             as np
 import pandas            as pd
 import matplotlib.pyplot as plt
 import multiprocessing   as mp
-import scienceplots
+import scienceplots # noqa: F401
 import datetime
 import time
 import os
@@ -106,7 +106,7 @@ def main():
     parser.add_argument("-v", "--VERBOSE", type=int, default=1,
                         help="Turn on verbose output.")
 
-    parser.add_argument("-D", "--DEBUG"  , type=int, default=0,
+    parser.add_argument("-d", "--DEBUG"  , type=int, default=0,
                         help="Turn on debug mode. Limits total number of data to 1000 points.")
 
     args = parser.parse_args()
@@ -203,6 +203,7 @@ def main():
     N_TRAIN:int = int(TRAINING_FRACTION * N)
 
     OUTPUT_PATH = f"{OUTPUT_PATH}/{N_TRAIN}_{SEED}"
+    os.makedirs(OUTPUT_PATH, exist_ok=True)
 
     WORKING_DESCRIPTORS = DESCRIPTORS
     WORKING_TARGETS     = TARGETS
@@ -322,7 +323,7 @@ def main():
     if VERBOSITY > 0:
         print("--------MODEL EVALUATION COMPLETE--------")
         print(f"Target: {TARGET_PATH}")
-        print(f"Relative MAE: {relative_MAE}%")
+        print(f"Relative MAE: {round(relative_MAE, 2)}%")
         print(f"Model cross-validated and retrained in {round(model_duration, 2)} seconds ({round(model_duration/60., 2)} minutes).")
         print(f"{round(model_duration/N_TRAIN, 2)} seconds/N_TRAIN.")
         print(f"{round(model_duration/N_TRAIN/N_FOLDS, 2)} seconds/N_TRAIN/N_FOLDS.")
