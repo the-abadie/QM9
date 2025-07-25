@@ -70,7 +70,7 @@ def main():
                         help="Path to save results.")
 
     parser.add_argument("-N", type=int, default=16,
-                        help="Number of cores for parellization.")
+                        help="Number of cores for parallelization.")
 
     parser.add_argument("-n", "--TRAINFRAC", type=float, default=0.15,
                         help="Fraction of total data to use for training.")
@@ -405,7 +405,7 @@ def main():
             f.write(f"Optimal Sigma : {best_sigma :.3f}\n")
             f.write(f"Optimal Lambda: {best_lambda:.3f}\n\n")
 
-            f.write(f"Normalized Desciptors? : {NORMAL_DESC}\n")
+            f.write(f"Normalized Descriptors? : {NORMAL_DESC}\n")
             f.write(f"Normalized Targets?    : {NORMAL_TARGET}\n\n")
 
             f.write(f"Metric    : {METRIC}\n")
